@@ -7,6 +7,11 @@ import type {
   TipoComprobante,
 } from './types/pos';
 import {
+  cargarSesionInicial,
+  cerrarSesionLocal,
+  type SesionPos,
+} from './services/authService';
+import {
   cargarCatalogoInicial,
   guardarCatalogoLocal,
   restablecerCatalogoPorDefecto,
@@ -23,6 +28,7 @@ import {
   type CierreCajaRegistrado,
   type MovimientoCaja,
 } from './services/arqueoService';
+import { LoginView } from './components/auth/LoginView';
 import { TopBarPos } from './components/pos/TopBarPos';
 import { ScannerBar } from './components/pos/ScannerBar';
 import { QuickServices } from './components/pos/QuickServices';
@@ -40,6 +46,7 @@ import {
 type VistaActiva = 'pos' | 'catalogo' | 'historial' | 'arqueo' | 'grafico';
 
 export default function App() {
+  const [sesion, setSesion] = useState<SesionPos | null>(() => cargarSesionInicial());
   const [vistaActiva, setVistaActiva] = useState<VistaActiva>('pos');
   const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(() => cargarCatalogoInicial());
   const [historial, setHistorial] = useState<VentaRegistrada[]>(() =>
@@ -64,6 +71,14 @@ export default function App() {
   const [ultimoComprobante, setUltimoComprobante] = useState<ComprobanteEmitido | null>(null);
   const [contadorTicket, setContadorTicket] = useState(1042);
 
+  const esAdmin = sesion?.usuario.rol === 'Admin';
+
+  useEffect(() => {
+    if (sesion && !esAdmin && vistaActiva !== 'pos') {
+      setVistaActiva('pos');
+    }
+  }, [sesion, esAdmin, vistaActiva]);
+
   useEffect(() => {
     guardarCatalogoLocal(catalogo);
   }, [catalogo]);
@@ -85,7 +100,29 @@ export default function App() {
     [catalogo]
   );
 
+  if (!sesion) {
+    return (
+      <LoginView
+        onLoginSuccess={(nuevaSesion) => {
+          setSesion(nuevaSesion);
+          setVistaActiva('pos');
+          setFeedback(null);
+        }}
+      />
+    );
+  }
+
+  const nombreCajero = sesion.usuario.nombre;
+
+  const handleCerrarSesion = () => {
+    cerrarSesionLocal();
+    setSesion(null);
+    setCarrito([]);
+    setFeedback(null);
+  };
+
   const crearItemCatalogo = (nuevo: Omit<ItemCatalogo, 'id'> & { id?: string }) => {
+    if (!esAdmin) return;
     const prefijo = nuevo.tipo === 'servicio' ? 'srv' : 'art';
     const idGenerado =
       nuevo.id || `${prefijo}-${Date.now().toString().slice(-6)}`;
@@ -111,6 +148,7 @@ export default function App() {
   };
 
   const actualizarItemCatalogo = (actualizado: ItemCatalogo) => {
+    if (!esAdmin) return;
     setCatalogo((prev) =>
       prev.map((item) => (item.id === actualizado.id ? actualizado : item))
     );
@@ -121,6 +159,7 @@ export default function App() {
   };
 
   const eliminarItemCatalogo = (id: string) => {
+    if (!esAdmin) return;
     setCatalogo((prev) => prev.filter((item) => item.id !== id));
     setCarrito((prev) => prev.filter((item) => item.id !== id));
     setFeedback({
@@ -130,6 +169,7 @@ export default function App() {
   };
 
   const handleRestablecerCatalogo = () => {
+    if (!esAdmin) return;
     const restaurado = restablecerCatalogoPorDefecto();
     setCatalogo(restaurado);
     setFeedback({
@@ -201,7 +241,7 @@ export default function App() {
     const comprobanteGenerado: ComprobanteEmitido = {
       numero: numeroActual,
       fechaHora,
-      cajero: 'Abel',
+      cajero: nombreCajero,
       tipoComprobante,
       datosCliente,
       items: carrito,
@@ -239,6 +279,7 @@ export default function App() {
   };
 
   const handleLimpiarHistorial = () => {
+    if (!esAdmin) return;
     const vacio = limpiarHistorialLocal();
     setHistorial(vacio);
     setFeedback({
@@ -250,6 +291,7 @@ export default function App() {
   const handleAgregarMovimientoCaja = (
     mov: Omit<MovimientoCaja, 'id' | 'fechaHora'>
   ) => {
+    if (!esAdmin) return;
     const fechaHora = new Date().toLocaleString('es-AR', {
       dateStyle: 'short',
       timeStyle: 'short',
@@ -267,12 +309,14 @@ export default function App() {
   };
 
   const handleEliminarMovimientoCaja = (id: string) => {
+    if (!esAdmin) return;
     setMovimientosCaja((prev) => prev.filter((m) => m.id !== id));
   };
 
   const handleRegistrarCierreCaja = (
     cierre: Omit<CierreCajaRegistrado, 'id' | 'fechaHora'>
   ) => {
+    if (!esAdmin) return;
     const fechaHora = new Date().toLocaleString('es-AR', {
       dateStyle: 'short',
       timeStyle: 'short',
@@ -295,7 +339,7 @@ export default function App() {
       <div className="pointer-events-none fixed top-1/3 -right-32 h-96 w-96 rounded-full bg-purple-600/15 blur-3xl print:hidden" />
 
       <main className="relative mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6 print:hidden">
-        <TopBarPos cajero="Abel" cajaAbierta={true} lectoraActiva={true} />
+        <TopBarPos cajero={nombreCajero} cajaAbierta={true} lectoraActiva={true} />
 
         {/* Navegación principal */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2">
@@ -311,51 +355,64 @@ export default function App() {
             >
               Caja / POS
             </button>
-            <button
-              type="button"
-              onClick={() => setVistaActiva('catalogo')}
-              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-                vistaActiva === 'catalogo'
-                  ? 'bg-cyan-500 text-slate-950'
-                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
-              }`}
-            >
-              Catálogo y Stock ({catalogo.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setVistaActiva('historial')}
-              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-                vistaActiva === 'historial'
-                  ? 'bg-cyan-500 text-slate-950'
-                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
-              }`}
-            >
-              Historial de Ventas ({historial.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setVistaActiva('arqueo')}
-              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-                vistaActiva === 'arqueo'
-                  ? 'bg-cyan-500 text-slate-950'
-                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
-              }`}
-            >
-              Arqueo de Caja
-            </button>
-            <button
-              type="button"
-              onClick={() => setVistaActiva('grafico')}
-              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
-                vistaActiva === 'grafico'
-                  ? 'bg-cyan-500 text-slate-950'
-                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
-              }`}
-            >
-              Gráfico de Ventas
-            </button>
+
+            {esAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setVistaActiva('catalogo')}
+                  className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                    vistaActiva === 'catalogo'
+                      ? 'bg-cyan-500 text-slate-950'
+                      : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  Catálogo y Stock ({catalogo.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVistaActiva('historial')}
+                  className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                    vistaActiva === 'historial'
+                      ? 'bg-cyan-500 text-slate-950'
+                      : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  Historial de Ventas ({historial.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVistaActiva('arqueo')}
+                  className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                    vistaActiva === 'arqueo'
+                      ? 'bg-cyan-500 text-slate-950'
+                      : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  Arqueo de Caja
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVistaActiva('grafico')}
+                  className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                    vistaActiva === 'grafico'
+                      ? 'bg-cyan-500 text-slate-950'
+                      : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  Gráfico de Ventas
+                </button>
+              </>
+            )}
           </div>
+
+          <button
+            type="button"
+            onClick={handleCerrarSesion}
+            className="cursor-pointer rounded-lg border border-rose-400/30 bg-rose-500/10 px-3 py-1.5 text-xs font-semibold text-rose-200 transition hover:bg-rose-500/20"
+          >
+            Cerrar sesión ({nombreCajero} · {sesion.usuario.rol})
+          </button>
         </div>
 
         {feedback && (
@@ -377,7 +434,7 @@ export default function App() {
           </div>
         )}
 
-        {vistaActiva === 'catalogo' ? (
+        {esAdmin && vistaActiva === 'catalogo' ? (
           <CatalogoStockView
             items={catalogo}
             onCrearItem={crearItemCatalogo}
@@ -386,21 +443,22 @@ export default function App() {
             onRestablecerCatalogo={handleRestablecerCatalogo}
             onVolverPos={() => setVistaActiva('pos')}
           />
-        ) : vistaActiva === 'historial' ? (
+        ) : esAdmin && vistaActiva === 'historial' ? (
           <HistorialVentasView
             ventas={historial}
             onReimprimirVenta={(venta) => setUltimoComprobante(venta)}
             onLimpiarHistorial={handleLimpiarHistorial}
             onVolverPos={() => setVistaActiva('pos')}
           />
-        ) : vistaActiva === 'arqueo' ? (
+        ) : esAdmin && vistaActiva === 'arqueo' ? (
           <ArqueoCajaView
-            cajero="Abel"
+            cajero={nombreCajero}
             ventas={historial}
             fondoInicial={fondoInicial}
             movimientos={movimientosCaja}
             cierres={cierresCaja}
             onCambiarFondoInicial={(monto) => {
+              if (!esAdmin) return;
               setFondoInicial(monto);
               setFeedback({
                 texto: 'Fondo inicial de caja actualizado.',
@@ -412,7 +470,7 @@ export default function App() {
             onRegistrarCierre={handleRegistrarCierreCaja}
             onVolverPos={() => setVistaActiva('pos')}
           />
-        ) : vistaActiva === 'grafico' ? (
+        ) : esAdmin && vistaActiva === 'grafico' ? (
           <GraficoVentasView
             ventasReales={historial}
             onVolverPos={() => setVistaActiva('pos')}
