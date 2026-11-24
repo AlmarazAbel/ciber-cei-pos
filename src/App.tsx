@@ -17,6 +17,12 @@ import {
   limpiarHistorialLocal,
   type VentaRegistrada,
 } from './services/historialService';
+import {
+  cargarEstadoArqueo,
+  guardarEstadoArqueo,
+  type CierreCajaRegistrado,
+  type MovimientoCaja,
+} from './services/arqueoService';
 import { TopBarPos } from './components/pos/TopBarPos';
 import { ScannerBar } from './components/pos/ScannerBar';
 import { QuickServices } from './components/pos/QuickServices';
@@ -24,12 +30,13 @@ import { CartTable } from './components/pos/CartTable';
 import { SummaryPanel } from './components/pos/SummaryPanel';
 import { CatalogoStockView } from './components/catalogo/CatalogoStockView';
 import { HistorialVentasView } from './components/historial/HistorialVentasView';
+import { ArqueoCajaView } from './components/arqueo/ArqueoCajaView';
 import {
   ComprobanteA4Modal,
   type ComprobanteEmitido,
 } from './components/ticket/ComprobanteA4Modal';
 
-type VistaActiva = 'pos' | 'catalogo' | 'historial';
+type VistaActiva = 'pos' | 'catalogo' | 'historial' | 'arqueo';
 
 export default function App() {
   const [vistaActiva, setVistaActiva] = useState<VistaActiva>('pos');
@@ -37,6 +44,18 @@ export default function App() {
   const [historial, setHistorial] = useState<VentaRegistrada[]>(() =>
     cargarHistorialInicial()
   );
+
+  const estadoArqueoInicial = useMemo(() => cargarEstadoArqueo(), []);
+  const [fondoInicial, setFondoInicial] = useState<number>(
+    estadoArqueoInicial.fondoInicial
+  );
+  const [movimientosCaja, setMovimientosCaja] = useState<MovimientoCaja[]>(
+    estadoArqueoInicial.movimientos
+  );
+  const [cierresCaja, setCierresCaja] = useState<CierreCajaRegistrado[]>(
+    estadoArqueoInicial.cierres
+  );
+
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [ultimosItemsFactura, setUltimosItemsFactura] = useState<ItemCarrito[]>([]);
   const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
@@ -51,6 +70,14 @@ export default function App() {
   useEffect(() => {
     guardarHistorialLocal(historial);
   }, [historial]);
+
+  useEffect(() => {
+    guardarEstadoArqueo({
+      fondoInicial,
+      movimientos: movimientosCaja,
+      cierres: cierresCaja,
+    });
+  }, [fondoInicial, movimientosCaja, cierresCaja]);
 
   const serviciosRapidos = useMemo(
     () => catalogo.filter((item) => item.tipo === 'servicio'),
@@ -219,6 +246,48 @@ export default function App() {
     });
   };
 
+  const handleAgregarMovimientoCaja = (
+    mov: Omit<MovimientoCaja, 'id' | 'fechaHora'>
+  ) => {
+    const fechaHora = new Date().toLocaleString('es-AR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+    const nuevoMov: MovimientoCaja = {
+      ...mov,
+      id: `mov-${Date.now()}`,
+      fechaHora,
+    };
+    setMovimientosCaja((prev) => [nuevoMov, ...prev]);
+    setFeedback({
+      texto: `${mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} "${mov.concepto}" registrado.`,
+      tipo: 'ok',
+    });
+  };
+
+  const handleEliminarMovimientoCaja = (id: string) => {
+    setMovimientosCaja((prev) => prev.filter((m) => m.id !== id));
+  };
+
+  const handleRegistrarCierreCaja = (
+    cierre: Omit<CierreCajaRegistrado, 'id' | 'fechaHora'>
+  ) => {
+    const fechaHora = new Date().toLocaleString('es-AR', {
+      dateStyle: 'short',
+      timeStyle: 'short',
+    });
+    const nuevoCierre: CierreCajaRegistrado = {
+      ...cierre,
+      id: `cierre-${Date.now()}`,
+      fechaHora,
+    };
+    setCierresCaja((prev) => [nuevoCierre, ...prev]);
+    setFeedback({
+      texto: 'Cierre de caja guardado en el historial de cierres.',
+      tipo: 'ok',
+    });
+  };
+
   return (
     <div className="relative min-h-screen overflow-x-hidden bg-[#060b14] text-slate-100 print:min-h-0 print:bg-white">
       <div className="pointer-events-none fixed -top-32 -left-32 h-96 w-96 rounded-full bg-cyan-500/15 blur-3xl print:hidden" />
@@ -263,6 +332,17 @@ export default function App() {
             >
               Historial de Ventas ({historial.length})
             </button>
+            <button
+              type="button"
+              onClick={() => setVistaActiva('arqueo')}
+              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                vistaActiva === 'arqueo'
+                  ? 'bg-cyan-500 text-slate-950'
+                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              Arqueo de Caja
+            </button>
           </div>
         </div>
 
@@ -299,6 +379,25 @@ export default function App() {
             ventas={historial}
             onReimprimirVenta={(venta) => setUltimoComprobante(venta)}
             onLimpiarHistorial={handleLimpiarHistorial}
+            onVolverPos={() => setVistaActiva('pos')}
+          />
+        ) : vistaActiva === 'arqueo' ? (
+          <ArqueoCajaView
+            cajero="Abel"
+            ventas={historial}
+            fondoInicial={fondoInicial}
+            movimientos={movimientosCaja}
+            cierres={cierresCaja}
+            onCambiarFondoInicial={(monto) => {
+              setFondoInicial(monto);
+              setFeedback({
+                texto: 'Fondo inicial de caja actualizado.',
+                tipo: 'ok',
+              });
+            }}
+            onAgregarMovimiento={handleAgregarMovimientoCaja}
+            onEliminarMovimiento={handleEliminarMovimientoCaja}
+            onRegistrarCierre={handleRegistrarCierreCaja}
             onVolverPos={() => setVistaActiva('pos')}
           />
         ) : (
