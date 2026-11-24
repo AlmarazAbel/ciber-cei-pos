@@ -31,12 +31,13 @@ import { SummaryPanel } from './components/pos/SummaryPanel';
 import { CatalogoStockView } from './components/catalogo/CatalogoStockView';
 import { HistorialVentasView } from './components/historial/HistorialVentasView';
 import { ArqueoCajaView } from './components/arqueo/ArqueoCajaView';
+import { GraficoVentasView } from './components/reportes/GraficoVentasView';
 import {
   ComprobanteA4Modal,
   type ComprobanteEmitido,
 } from './components/ticket/ComprobanteA4Modal';
 
-type VistaActiva = 'pos' | 'catalogo' | 'historial' | 'arqueo';
+type VistaActiva = 'pos' | 'catalogo' | 'historial' | 'arqueo' | 'grafico';
 
 export default function App() {
   const [vistaActiva, setVistaActiva] = useState<VistaActiva>('pos');
@@ -343,6 +344,17 @@ export default function App() {
             >
               Arqueo de Caja
             </button>
+            <button
+              type="button"
+              onClick={() => setVistaActiva('grafico')}
+              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                vistaActiva === 'grafico'
+                  ? 'bg-cyan-500 text-slate-950'
+                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              Gráfico de Ventas
+            </button>
           </div>
         </div>
 
@@ -398,6 +410,11 @@ export default function App() {
             onAgregarMovimiento={handleAgregarMovimientoCaja}
             onEliminarMovimiento={handleEliminarMovimientoCaja}
             onRegistrarCierre={handleRegistrarCierreCaja}
+            onVolverPos={() => setVistaActiva('pos')}
+          />
+        ) : vistaActiva === 'grafico' ? (
+          <GraficoVentasView
+            ventasReales={historial}
             onVolverPos={() => setVistaActiva('pos')}
           />
         ) : (
