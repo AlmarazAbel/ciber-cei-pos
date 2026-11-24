@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react';
-import { ARTICULOS_INICIALES, SERVICIOS_RAPIDOS } from './data/catalogMock';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   DatosClienteFactura,
   ItemCarrito,
@@ -7,17 +6,27 @@ import type {
   MedioPago,
   TipoComprobante,
 } from './types/pos';
+import {
+  cargarCatalogoInicial,
+  guardarCatalogoLocal,
+  restablecerCatalogoPorDefecto,
+} from './services/catalogoService';
 import { TopBarPos } from './components/pos/TopBarPos';
 import { ScannerBar } from './components/pos/ScannerBar';
 import { QuickServices } from './components/pos/QuickServices';
 import { CartTable } from './components/pos/CartTable';
 import { SummaryPanel } from './components/pos/SummaryPanel';
+import { CatalogoStockView } from './components/catalogo/CatalogoStockView';
 import {
   ComprobanteA4Modal,
   type ComprobanteEmitido,
 } from './components/ticket/ComprobanteA4Modal';
 
+type VistaActiva = 'pos' | 'catalogo';
+
 export default function App() {
+  const [vistaActiva, setVistaActiva] = useState<VistaActiva>('pos');
+  const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(() => cargarCatalogoInicial());
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [ultimosItemsFactura, setUltimosItemsFactura] = useState<ItemCarrito[]>([]);
   const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
@@ -25,10 +34,83 @@ export default function App() {
   const [ultimoComprobante, setUltimoComprobante] = useState<ComprobanteEmitido | null>(null);
   const [contadorTicket, setContadorTicket] = useState(1042);
 
-  const catalogoCompleto = useMemo(
-    () => [...ARTICULOS_INICIALES, ...SERVICIOS_RAPIDOS],
-    []
+  useEffect(() => {
+    guardarCatalogoLocal(catalogo);
+  }, [catalogo]);
+
+  const serviciosRapidos = useMemo(
+    () => catalogo.filter((item) => item.tipo === 'servicio'),
+    [catalogo]
   );
+
+  const crearItemCatalogo = (nuevo: Omit<ItemCatalogo, 'id'> & { id?: string }) => {
+    const prefijo = nuevo.tipo === 'servicio' ? 'srv' : 'art';
+    const idGenerado =
+      nuevo.id || `${prefijo}-${Date.now().toString().slice(-6)}`;
+
+    if (catalogo.some((i) => i.id === idGenerado)) {
+      setFeedback({
+        texto: `Ya existe un ítem con el código "${idGenerado}".`,
+        tipo: 'error',
+      });
+      return;
+    }
+
+    const itemCreado: ItemCatalogo = {
+      ...nuevo,
+      id: idGenerado,
+    };
+
+    setCatalogo((prev) => [itemCreado, ...prev]);
+    setFeedback({
+      texto: `"${itemCreado.nombre}" agregado al catálogo.`,
+      tipo: 'ok',
+    });
+  };
+
+  const actualizarItemCatalogo = (actualizado: ItemCatalogo) => {
+    setCatalogo((prev) =>
+      prev.map((item) => (item.id === actualizado.id ? actualizado : item))
+    );
+    setFeedback({
+      texto: `"${actualizado.nombre}" actualizado.`,
+      tipo: 'ok',
+    });
+  };
+
+  const eliminarItemCatalogo = (id: string) => {
+    setCatalogo((prev) => prev.filter((item) => item.id !== id));
+    setCarrito((prev) => prev.filter((item) => item.id !== id));
+    setFeedback({
+      texto: 'Ítem eliminado del catálogo.',
+      tipo: 'ok',
+    });
+  };
+
+  const handleRestablecerCatalogo = () => {
+    const restaurado = restablecerCatalogoPorDefecto();
+    setCatalogo(restaurado);
+    setFeedback({
+      texto: 'Catálogo restablecido a los valores iniciales.',
+      tipo: 'ok',
+    });
+  };
+
+  const descontarStockVenta = (itemsVendidos: ItemCarrito[]) => {
+    setCatalogo((prev) =>
+      prev.map((item) => {
+        if (item.tipo !== 'articulo' || typeof item.stock !== 'number') {
+          return item;
+        }
+        const vendido = itemsVendidos.find((v) => v.id === item.id);
+        if (!vendido) return item;
+        return {
+          ...item,
+          stock: Math.max(0, item.stock - vendido.cantidad),
+        };
+      })
+    );
+  };
 
   const agregarItem = (item: ItemCatalogo) => {
     setCarrito((prev) => {
@@ -72,6 +154,8 @@ export default function App() {
       timeStyle: 'short',
     });
 
+    descontarStockVenta(carrito);
+
     if (tipoComprobante === 'comprobante') {
       setUltimoComprobante({
         numero: contadorTicket,
@@ -108,11 +192,33 @@ export default function App() {
       <main className="relative mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6 print:hidden">
         <TopBarPos cajero="Abel" cajaAbierta={true} lectoraActiva={true} />
 
-        <ScannerBar
-          catalogo={catalogoCompleto}
-          onAgregarItem={agregarItem}
-          onFeedback={(texto, tipo) => setFeedback({ texto, tipo })}
-        />
+        {/* Navegación entre Caja / POS y Catálogo y Stock */}
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2">
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setVistaActiva('pos')}
+              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                vistaActiva === 'pos'
+                  ? 'bg-cyan-500 text-slate-950'
+                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              Caja / POS
+            </button>
+            <button
+              type="button"
+              onClick={() => setVistaActiva('catalogo')}
+              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                vistaActiva === 'catalogo'
+                  ? 'bg-cyan-500 text-slate-950'
+                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              Catálogo y Stock ({catalogo.length})
+            </button>
+          </div>
+        </div>
 
         {feedback && (
           <div
@@ -126,37 +232,59 @@ export default function App() {
             <button
               type="button"
               onClick={() => setFeedback(null)}
-              className="text-slate-300 hover:text-white ml-3"
+              className="ml-3 text-slate-300 hover:text-white"
             >
               Cerrar
             </button>
           </div>
         )}
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
-          <div className="lg:col-span-3">
-            <QuickServices servicios={SERVICIOS_RAPIDOS} onSeleccionarServicio={agregarItem} />
-          </div>
-
-          <div className="lg:col-span-6">
-            <CartTable
-              items={carrito}
-              onCambiarCantidad={cambiarCantidad}
-              onQuitarItem={quitarItem}
+        {vistaActiva === 'catalogo' ? (
+          <CatalogoStockView
+            items={catalogo}
+            onCrearItem={crearItemCatalogo}
+            onActualizarItem={actualizarItemCatalogo}
+            onEliminarItem={eliminarItemCatalogo}
+            onRestablecerCatalogo={handleRestablecerCatalogo}
+            onVolverPos={() => setVistaActiva('pos')}
+          />
+        ) : (
+          <>
+            <ScannerBar
+              catalogo={catalogo}
+              onAgregarItem={agregarItem}
+              onFeedback={(texto, tipo) => setFeedback({ texto, tipo })}
             />
-          </div>
 
-          <div className="lg:col-span-3">
-            <SummaryPanel
-              total={total}
-              medioPago={medioPago}
-              items={carrito.length > 0 ? carrito : ultimosItemsFactura}
-              onCambiarMedioPago={setMedioPago}
-              onEmitir={emitirDocumento}
-              disabled={carrito.length === 0}
-            />
-          </div>
-        </div>
+            <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+              <div className="lg:col-span-3">
+                <QuickServices
+                  servicios={serviciosRapidos}
+                  onSeleccionarServicio={agregarItem}
+                />
+              </div>
+
+              <div className="lg:col-span-6">
+                <CartTable
+                  items={carrito}
+                  onCambiarCantidad={cambiarCantidad}
+                  onQuitarItem={quitarItem}
+                />
+              </div>
+
+              <div className="lg:col-span-3">
+                <SummaryPanel
+                  total={total}
+                  medioPago={medioPago}
+                  items={carrito.length > 0 ? carrito : ultimosItemsFactura}
+                  onCambiarMedioPago={setMedioPago}
+                  onEmitir={emitirDocumento}
+                  disabled={carrito.length === 0}
+                />
+              </div>
+            </div>
+          </>
+        )}
       </main>
 
       <ComprobanteA4Modal

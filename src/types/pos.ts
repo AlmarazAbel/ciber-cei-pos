@@ -18,6 +18,7 @@ export interface ItemCatalogo {
   codigoBarras?: string;
   nombre: string;
   precio: number;
+  precioCompra?: number;
   tipo: TipoItem;
   stock?: number;
   imagen?: string;

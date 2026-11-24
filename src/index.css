@@ -1,11 +1,28 @@
 @import "tailwindcss";
+
 @media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
   body * {
     visibility: hidden;
   }
 
+  html,
+  body {
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
   #ticket-factura-c-print,
-  #ticket-factura-c-print * {
+  #ticket-factura-c-print *,
+  #comprobante-a4-print,
+  #comprobante-a4-print * {
     visibility: visible;
   }
 
@@ -18,5 +35,23 @@
     color: #000000 !important;
     box-shadow: none !important;
     border: none !important;
+  }
+
+  #comprobante-a4-print {
+    position: static !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: none !important;
+    overflow: visible !important;
+    background: #ffffff !important;
+    background-image: none !important;
+    color: #000000 !important;
+    border: none !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+  }
+
+  .no-print {
+    display: none !important;
   }
 }

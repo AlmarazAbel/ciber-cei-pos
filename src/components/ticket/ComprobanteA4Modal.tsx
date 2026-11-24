@@ -36,49 +36,7 @@ export function ComprobanteA4Modal({ comprobante, onCerrar }: ComprobanteA4Modal
   const esFacturaArca = comprobante.tipoComprobante === 'factura_arca';
 
   return (
-    <div className="comprobante-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm">
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 12mm;
-          }
-          * {
-            box-shadow: none !important;
-            text-shadow: none !important;
-            backdrop-filter: none !important;
-          }
-          html, body {
-            background: #ffffff !important;
-            background-image: none !important;
-            color: #000000 !important;
-            margin: 0 !important;
-            padding: 0 !important;
-          }
-          .comprobante-backdrop {
-            position: static !important;
-            background: #ffffff !important;
-            background-image: none !important;
-            padding: 0 !important;
-            display: block !important;
-          }
-          #comprobante-a4-print {
-            position: static !important;
-            width: 100% !important;
-            max-width: 100% !important;
-            max-height: none !important;
-            overflow: visible !important;
-            background: #ffffff !important;
-            background-image: none !important;
-            color: #000000 !important;
-            border: none !important;
-            padding: 0 !important;
-          }
-          .no-print {
-            display: none !important;
-          }
-        }
-      `}</style>
+    <div className="comprobante-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm print:static print:block print:bg-white print:p-0">
       <div
         id="comprobante-a4-print"
         className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-2xl border border-slate-300 bg-white p-6 sm:p-8 text-slate-900 shadow-2xl"
