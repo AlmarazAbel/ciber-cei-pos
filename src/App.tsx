@@ -1,6 +1,5 @@
 import { useMemo, useState } from 'react';
 import { ARTICULOS_INICIALES, SERVICIOS_RAPIDOS } from './data/catalogMock';
-import { emitirFacturaArca } from './services/arcaService';
 import type {
   DatosClienteFactura,
   ItemCarrito,
@@ -20,11 +19,11 @@ import {
 
 export default function App() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
+  const [ultimosItemsFactura, setUltimosItemsFactura] = useState<ItemCarrito[]>([]);
   const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
   const [feedback, setFeedback] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
   const [ultimoComprobante, setUltimoComprobante] = useState<ComprobanteEmitido | null>(null);
   const [contadorTicket, setContadorTicket] = useState(1042);
-  const [emitiendoArca, setEmitiendoArca] = useState(false);
 
   const catalogoCompleto = useMemo(
     () => [...ARTICULOS_INICIALES, ...SERVICIOS_RAPIDOS],
@@ -62,74 +61,43 @@ export default function App() {
     [carrito]
   );
 
-  const emitirDocumento = async (
+  const emitirDocumento = (
     tipoComprobante: TipoComprobante,
     datosCliente?: DatosClienteFactura
   ) => {
-    if (carrito.length === 0 || emitiendoArca) return;
+    if (carrito.length === 0) return;
 
     const fechaHora = new Date().toLocaleString('es-AR', {
       dateStyle: 'short',
       timeStyle: 'short',
     });
 
-    if (tipoComprobante === 'factura_arca') {
-      setEmitiendoArca(true);
-      try {
-        const respuestaArca = await emitirFacturaArca({
-          items: carrito,
-          total,
-          medioPago,
-          cliente: datosCliente ?? {
-            cuitDni: 'S/D',
-            razonSocial: 'Consumidor Final',
-            condicionFiscal: 'Consumidor Final',
-          },
-        });
-
-        setUltimoComprobante({
-          numero: respuestaArca.numeroComprobante || contadorTicket,
-          puntoVenta: respuestaArca.puntoVenta,
-          cae: respuestaArca.cae,
-          vencimientoCae: respuestaArca.vencimientoCae,
-          fechaHora,
-          cajero: 'Abel',
-          tipoComprobante: 'factura_arca',
-          datosCliente,
-          items: carrito,
-          total,
-          medioPago,
-        });
-
-        setCarrito([]);
-        setFeedback({
-          texto:
-            respuestaArca.modo === 'backend'
-              ? `Factura ARCA N° ${respuestaArca.numeroComprobante} autorizada (CAE ${respuestaArca.cae}).`
-              : `Factura ARCA #${respuestaArca.numeroComprobante} generada en modo prueba (sin backend conectado).`,
-          tipo: 'ok',
-        });
-      } finally {
-        setEmitiendoArca(false);
-      }
-      return;
+    if (tipoComprobante === 'comprobante') {
+      setUltimoComprobante({
+        numero: contadorTicket,
+        fechaHora,
+        cajero: 'Abel',
+        tipoComprobante,
+        datosCliente,
+        items: carrito,
+        total,
+        medioPago,
+      });
+      setContadorTicket((n) => n + 1);
+      setFeedback({
+        texto: `Comprobante #${contadorTicket} listo para imprimir en A4.`,
+        tipo: 'ok',
+      });
+    } else {
+      setUltimoComprobante(null);
+      setUltimosItemsFactura(carrito);
+      setFeedback({
+        texto: `Factura C emitida en ARCA (${datosCliente?.razonSocial || 'Consumidor Final'}).`,
+        tipo: 'ok',
+      });
     }
 
-    setUltimoComprobante({
-      numero: contadorTicket,
-      fechaHora,
-      cajero: 'Abel',
-      tipoComprobante: 'comprobante',
-      items: carrito,
-      total,
-      medioPago,
-    });
-    setContadorTicket((n) => n + 1);
     setCarrito([]);
-    setFeedback({
-      texto: `Comprobante #${contadorTicket} listo para imprimir en A4.`,
-      tipo: 'ok',
-    });
   };
 
   return (
@@ -182,9 +150,10 @@ export default function App() {
             <SummaryPanel
               total={total}
               medioPago={medioPago}
+              items={carrito.length > 0 ? carrito : ultimosItemsFactura}
               onCambiarMedioPago={setMedioPago}
               onEmitir={emitirDocumento}
-              disabled={carrito.length === 0 || emitiendoArca}
+              disabled={carrito.length === 0}
             />
           </div>
         </div>

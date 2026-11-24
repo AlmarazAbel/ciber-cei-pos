@@ -2,13 +2,20 @@ import { useState } from 'react';
 import type {
   CondicionFiscal,
   DatosClienteFactura,
+  ItemCarrito,
   MedioPago,
   TipoComprobante,
 } from '../../types/pos';
+import {
+  type FacturaCResponseData,
+  emitirFacturaCDesdePos,
+} from '../../services/facturacionService';
+import { TicketFacturaC } from '../ticket/TicketFacturaC';
 
 interface SummaryPanelProps {
   total: number;
   medioPago: MedioPago;
+  items?: ItemCarrito[];
   onCambiarMedioPago: (medio: MedioPago) => void;
   onEmitir: (tipo: TipoComprobante, datosCliente?: DatosClienteFactura) => void;
   disabled?: boolean;
@@ -22,6 +29,24 @@ const CONDICIONES_FISCALES: CondicionFiscal[] = [
   'Exento',
 ];
 
+const CONDICION_IVA_ID: Record<CondicionFiscal, number> = {
+  'Consumidor Final': 5,
+  Monotributo: 6,
+  'Responsable Inscripto': 1,
+  Exento: 4,
+};
+
+function parsearDocumentoReceptor(rawInput: string): { docTipo: number; docNro: number } {
+  const soloDigitos = rawInput.replace(/\D/g, '');
+  if (soloDigitos.length === 11) {
+    return { docTipo: 80, docNro: Number(soloDigitos) };
+  }
+  if (soloDigitos.length >= 7 && soloDigitos.length <= 8) {
+    return { docTipo: 96, docNro: Number(soloDigitos) };
+  }
+  return { docTipo: 99, docNro: 0 };
+}
+
 const formatoARS = new Intl.NumberFormat('es-AR', {
   style: 'currency',
   currency: 'ARS',
@@ -31,6 +56,7 @@ const formatoARS = new Intl.NumberFormat('es-AR', {
 export function SummaryPanel({
   total,
   medioPago,
+  items = [],
   onCambiarMedioPago,
   onEmitir,
   disabled = false,
@@ -40,27 +66,67 @@ export function SummaryPanel({
   const [razonSocial, setRazonSocial] = useState('');
   const [condicionFiscal, setCondicionFiscal] =
     useState<CondicionFiscal>('Consumidor Final');
+  const [ultimoDatosCliente, setUltimoDatosCliente] =
+    useState<DatosClienteFactura | null>(null);
+
+  const [facturaEmitida, setFacturaEmitida] = useState<FacturaCResponseData | null>(null);
+  const [emitiendoArca, setEmitiendoArca] = useState(false);
+  const [errorArca, setErrorArca] = useState<string | null>(null);
 
   const handleEmitirComprobante = () => {
     if (disabled) return;
+    setErrorArca(null);
     setModoFacturaArca(false);
     onEmitir('comprobante');
   };
 
   const handleToggleFacturaArca = () => {
-    if (disabled) return;
+    if (disabled || emitiendoArca) return;
+    setErrorArca(null);
     setModoFacturaArca((prev) => !prev);
   };
 
-  const handleConfirmarFacturaArca = (e: React.FormEvent) => {
+  const handleConfirmarFacturaArca = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (disabled) return;
-    onEmitir('factura_arca', {
+    if (disabled || emitiendoArca) return;
+
+    if (total <= 0) {
+      setErrorArca('El total debe ser mayor a $0 para emitir Factura C.');
+      return;
+    }
+
+    const datosCliente: DatosClienteFactura = {
       cuitDni: cuitDni.trim() || 'S/D',
       razonSocial: razonSocial.trim() || 'Consumidor Final',
       condicionFiscal,
-    });
-    setModoFacturaArca(false);
+    };
+
+    const { docTipo, docNro } = parsearDocumentoReceptor(cuitDni);
+    const condicionIvaReceptorId = CONDICION_IVA_ID[condicionFiscal] ?? 5;
+
+    setErrorArca(null);
+    setEmitiendoArca(true);
+
+    try {
+      const data = await emitirFacturaCDesdePos({
+        importeTotal: total,
+        concepto: 1,
+        docTipo,
+        docNro,
+        condicionIvaReceptorId,
+      });
+
+      setUltimoDatosCliente(datosCliente);
+      setFacturaEmitida(data);
+      setModoFacturaArca(false);
+      onEmitir('factura_arca', datosCliente);
+    } catch (err) {
+      setErrorArca(
+        err instanceof Error ? err.message : 'Error al emitir Factura C en ARCA'
+      );
+    } finally {
+      setEmitiendoArca(false);
+    }
   };
 
   return (
@@ -156,18 +222,25 @@ export function SummaryPanel({
 
             <button
               type="submit"
-              className="w-full rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-amber-400"
+              disabled={emitiendoArca}
+              className="w-full rounded-lg bg-amber-500 px-3 py-2 text-xs font-bold text-slate-950 transition hover:bg-amber-400 disabled:opacity-50"
             >
-              Generar Factura ARCA (A4)
+              {emitiendoArca ? 'Emitiendo en ARCA...' : 'Generar Factura ARCA'}
             </button>
           </form>
+        )}
+
+        {errorArca && (
+          <p className="rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-2 text-xs text-rose-200">
+            {errorArca}
+          </p>
         )}
       </div>
 
       <div className="space-y-2">
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || emitiendoArca}
           onClick={handleEmitirComprobante}
           className="w-full rounded-xl bg-linear-to-r from-indigo-500 via-purple-500 to-cyan-500 px-4 py-3 text-xs sm:text-sm font-bold tracking-wider text-white uppercase shadow-[0_0_25px_rgba(99,102,241,0.35)] transition hover:brightness-110 active:scale-[0.99] disabled:opacity-40 disabled:pointer-events-none"
         >
@@ -176,7 +249,7 @@ export function SummaryPanel({
 
         <button
           type="button"
-          disabled={disabled}
+          disabled={disabled || emitiendoArca}
           onClick={handleToggleFacturaArca}
           className={`w-full rounded-xl border px-4 py-2.5 text-xs font-bold tracking-wider uppercase transition disabled:opacity-40 disabled:pointer-events-none ${
             modoFacturaArca
@@ -187,6 +260,16 @@ export function SummaryPanel({
           {modoFacturaArca ? 'Cancelar Factura ARCA' : 'Factura ARCA'}
         </button>
       </div>
+
+      {facturaEmitida && (
+        <TicketFacturaC
+          factura={facturaEmitida}
+          datosCliente={ultimoDatosCliente ?? undefined}
+          items={items}
+          medioPago={medioPago}
+          onCerrar={() => setFacturaEmitida(null)}
+        />
+      )}
     </aside>
   );
 }
