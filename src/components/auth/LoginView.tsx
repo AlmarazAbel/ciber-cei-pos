@@ -1,22 +1,30 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   autenticarLocal,
-  USUARIOS_LOCALES,
   type SesionPos,
+  type UsuarioPos,
 } from '../../services/authService';
 
 interface LoginViewProps {
+  usuarios: UsuarioPos[];
   onLoginSuccess: (sesion: SesionPos) => void;
 }
 
-export function LoginView({ onLoginSuccess }: LoginViewProps) {
-  const [identificador, setIdentificador] = useState('abel');
+export function LoginView({ usuarios, onLoginSuccess }: LoginViewProps) {
+  const usuariosActivos = useMemo(
+    () => usuarios.filter((u) => u.activo),
+    [usuarios]
+  );
+
+  const [identificador, setIdentificador] = useState(
+    usuariosActivos[0]?.usuario ?? 'abel'
+  );
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const resultado = autenticarLocal(identificador, password);
+    const resultado = autenticarLocal(identificador, password, usuarios);
     if (!resultado.ok) {
       setError(resultado.error);
       return;
@@ -27,11 +35,13 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
 
   const handleAccesoRapido = (usuarioDemo: string) => {
     setIdentificador(usuarioDemo);
-    const resultado = autenticarLocal(usuarioDemo, '');
-    if (resultado.ok) {
-      setError(null);
-      onLoginSuccess(resultado.sesion);
+    const resultado = autenticarLocal(usuarioDemo, '', usuarios);
+    if (!resultado.ok) {
+      setError(resultado.error);
+      return;
     }
+    setError(null);
+    onLoginSuccess(resultado.sesion);
   };
 
   return (
@@ -103,23 +113,25 @@ export function LoginView({ onLoginSuccess }: LoginViewProps) {
         </form>
 
         {/* Acceso rápido local */}
-        <div className="mt-5 border-t border-white/10 pt-4 text-xs">
-          <span className="block text-[11px] font-medium text-slate-400">
-            Acceso rápido local (modo prueba):
-          </span>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {USUARIOS_LOCALES.map((u) => (
-              <button
-                key={u.id}
-                type="button"
-                onClick={() => handleAccesoRapido(u.usuario)}
-                className="cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200"
-              >
-                {u.nombre} ({u.rol})
-              </button>
-            ))}
+        {usuariosActivos.length > 0 && (
+          <div className="mt-5 border-t border-white/10 pt-4 text-xs">
+            <span className="block text-[11px] font-medium text-slate-400">
+              Acceso rápido local (operadores activos):
+            </span>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {usuariosActivos.map((u) => (
+                <button
+                  key={u.id}
+                  type="button"
+                  onClick={() => handleAccesoRapido(u.usuario)}
+                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200"
+                >
+                  {u.nombre} ({u.rol})
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

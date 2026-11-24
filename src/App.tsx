@@ -8,8 +8,12 @@ import type {
 } from './types/pos';
 import {
   cargarSesionInicial,
+  cargarUsuariosLocales,
   cerrarSesionLocal,
+  guardarUsuariosLocales,
+  type RolUsuarioPos,
   type SesionPos,
+  type UsuarioPos,
 } from './services/authService';
 import {
   cargarCatalogoInicial,
@@ -38,17 +42,31 @@ import { CatalogoStockView } from './components/catalogo/CatalogoStockView';
 import { HistorialVentasView } from './components/historial/HistorialVentasView';
 import { ArqueoCajaView } from './components/arqueo/ArqueoCajaView';
 import { GraficoVentasView } from './components/reportes/GraficoVentasView';
+import { UsuariosAdminView } from './components/usuarios/UsuariosAdminView';
 import {
   ComprobanteA4Modal,
   type ComprobanteEmitido,
 } from './components/ticket/ComprobanteA4Modal';
 
-type VistaActiva = 'pos' | 'catalogo' | 'historial' | 'arqueo' | 'grafico';
+type VistaActiva =
+  | 'pos'
+  | 'catalogo'
+  | 'historial'
+  | 'arqueo'
+  | 'grafico'
+  | 'usuarios';
 
 export default function App() {
-  const [sesion, setSesion] = useState<SesionPos | null>(() => cargarSesionInicial());
+  const [usuarios, setUsuarios] = useState<UsuarioPos[]>(() =>
+    cargarUsuariosLocales()
+  );
+  const [sesion, setSesion] = useState<SesionPos | null>(() =>
+    cargarSesionInicial()
+  );
   const [vistaActiva, setVistaActiva] = useState<VistaActiva>('pos');
-  const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(() => cargarCatalogoInicial());
+  const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(() =>
+    cargarCatalogoInicial()
+  );
   const [historial, setHistorial] = useState<VentaRegistrada[]>(() =>
     cargarHistorialInicial()
   );
@@ -67,11 +85,19 @@ export default function App() {
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [ultimosItemsFactura, setUltimosItemsFactura] = useState<ItemCarrito[]>([]);
   const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
-  const [feedback, setFeedback] = useState<{ texto: string; tipo: 'ok' | 'error' } | null>(null);
-  const [ultimoComprobante, setUltimoComprobante] = useState<ComprobanteEmitido | null>(null);
+  const [feedback, setFeedback] = useState<{
+    texto: string;
+    tipo: 'ok' | 'error';
+  } | null>(null);
+  const [ultimoComprobante, setUltimoComprobante] =
+    useState<ComprobanteEmitido | null>(null);
   const [contadorTicket, setContadorTicket] = useState(1042);
 
   const esAdmin = sesion?.usuario.rol === 'Admin';
+
+  useEffect(() => {
+    guardarUsuariosLocales(usuarios);
+  }, [usuarios]);
 
   useEffect(() => {
     if (sesion && !esAdmin && vistaActiva !== 'pos') {
@@ -103,6 +129,7 @@ export default function App() {
   if (!sesion) {
     return (
       <LoginView
+        usuarios={usuarios}
         onLoginSuccess={(nuevaSesion) => {
           setSesion(nuevaSesion);
           setVistaActiva('pos');
@@ -121,7 +148,62 @@ export default function App() {
     setFeedback(null);
   };
 
-  const crearItemCatalogo = (nuevo: Omit<ItemCatalogo, 'id'> & { id?: string }) => {
+  const handleCrearUsuario = (nuevo: {
+    nombre: string;
+    usuario: string;
+    password?: string;
+    rol: RolUsuarioPos;
+  }) => {
+    if (!esAdmin) return;
+    const creado: UsuarioPos = {
+      id: `usr-${Date.now().toString().slice(-6)}`,
+      nombre: nuevo.nombre,
+      usuario: nuevo.usuario,
+      password: nuevo.password,
+      rol: nuevo.rol,
+      activo: true,
+    };
+    setUsuarios((prev) => [...prev, creado]);
+    setFeedback({
+      texto: `Usuario "${creado.nombre}" (@${creado.usuario}) creado con rol ${creado.rol}.`,
+      tipo: 'ok',
+    });
+  };
+
+  const handleCambiarRolUsuario = (id: string, nuevoRol: RolUsuarioPos) => {
+    if (!esAdmin || id === sesion.usuario.id) return;
+    setUsuarios((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, rol: nuevoRol } : u))
+    );
+    setFeedback({
+      texto: 'Rol de usuario actualizado.',
+      tipo: 'ok',
+    });
+  };
+
+  const handleToggleActivoUsuario = (id: string) => {
+    if (!esAdmin || id === sesion.usuario.id) return;
+    setUsuarios((prev) =>
+      prev.map((u) => (u.id === id ? { ...u, activo: !u.activo } : u))
+    );
+    setFeedback({
+      texto: 'Estado de usuario actualizado.',
+      tipo: 'ok',
+    });
+  };
+
+  const handleEliminarUsuario = (id: string) => {
+    if (!esAdmin || id === sesion.usuario.id) return;
+    setUsuarios((prev) => prev.filter((u) => u.id !== id));
+    setFeedback({
+      texto: 'Usuario eliminado.',
+      tipo: 'ok',
+    });
+  };
+
+  const crearItemCatalogo = (
+    nuevo: Omit<ItemCatalogo, 'id'> & { id?: string }
+  ) => {
     if (!esAdmin) return;
     const prefijo = nuevo.tipo === 'servicio' ? 'srv' : 'art';
     const idGenerado =
@@ -339,7 +421,11 @@ export default function App() {
       <div className="pointer-events-none fixed top-1/3 -right-32 h-96 w-96 rounded-full bg-purple-600/15 blur-3xl print:hidden" />
 
       <main className="relative mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6 print:hidden">
-        <TopBarPos cajero={nombreCajero} cajaAbierta={true} lectoraActiva={true} />
+        <TopBarPos
+          cajero={nombreCajero}
+          cajaAbierta={true}
+          lectoraActiva={true}
+        />
 
         {/* Navegación principal */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2">
@@ -401,6 +487,17 @@ export default function App() {
                   }`}
                 >
                   Gráfico de Ventas
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setVistaActiva('usuarios')}
+                  className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                    vistaActiva === 'usuarios'
+                      ? 'bg-cyan-500 text-slate-950'
+                      : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+                  }`}
+                >
+                  Usuarios ({usuarios.length})
                 </button>
               </>
             )}
@@ -473,6 +570,16 @@ export default function App() {
         ) : esAdmin && vistaActiva === 'grafico' ? (
           <GraficoVentasView
             ventasReales={historial}
+            onVolverPos={() => setVistaActiva('pos')}
+          />
+        ) : esAdmin && vistaActiva === 'usuarios' ? (
+          <UsuariosAdminView
+            usuarios={usuarios}
+            usuarioActualId={sesion.usuario.id}
+            onCrearUsuario={handleCrearUsuario}
+            onCambiarRol={handleCambiarRolUsuario}
+            onToggleActivo={handleToggleActivoUsuario}
+            onEliminarUsuario={handleEliminarUsuario}
             onVolverPos={() => setVistaActiva('pos')}
           />
         ) : (
