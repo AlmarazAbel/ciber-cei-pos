@@ -11,22 +11,32 @@ import {
   guardarCatalogoLocal,
   restablecerCatalogoPorDefecto,
 } from './services/catalogoService';
+import {
+  cargarHistorialInicial,
+  guardarHistorialLocal,
+  limpiarHistorialLocal,
+  type VentaRegistrada,
+} from './services/historialService';
 import { TopBarPos } from './components/pos/TopBarPos';
 import { ScannerBar } from './components/pos/ScannerBar';
 import { QuickServices } from './components/pos/QuickServices';
 import { CartTable } from './components/pos/CartTable';
 import { SummaryPanel } from './components/pos/SummaryPanel';
 import { CatalogoStockView } from './components/catalogo/CatalogoStockView';
+import { HistorialVentasView } from './components/historial/HistorialVentasView';
 import {
   ComprobanteA4Modal,
   type ComprobanteEmitido,
 } from './components/ticket/ComprobanteA4Modal';
 
-type VistaActiva = 'pos' | 'catalogo';
+type VistaActiva = 'pos' | 'catalogo' | 'historial';
 
 export default function App() {
   const [vistaActiva, setVistaActiva] = useState<VistaActiva>('pos');
   const [catalogo, setCatalogo] = useState<ItemCatalogo[]>(() => cargarCatalogoInicial());
+  const [historial, setHistorial] = useState<VentaRegistrada[]>(() =>
+    cargarHistorialInicial()
+  );
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
   const [ultimosItemsFactura, setUltimosItemsFactura] = useState<ItemCarrito[]>([]);
   const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
@@ -37,6 +47,10 @@ export default function App() {
   useEffect(() => {
     guardarCatalogoLocal(catalogo);
   }, [catalogo]);
+
+  useEffect(() => {
+    guardarHistorialLocal(historial);
+  }, [historial]);
 
   const serviciosRapidos = useMemo(
     () => catalogo.filter((item) => item.tipo === 'servicio'),
@@ -154,34 +168,55 @@ export default function App() {
       timeStyle: 'short',
     });
 
+    const numeroActual = contadorTicket;
+
+    const comprobanteGenerado: ComprobanteEmitido = {
+      numero: numeroActual,
+      fechaHora,
+      cajero: 'Abel',
+      tipoComprobante,
+      datosCliente,
+      items: carrito,
+      total,
+      medioPago,
+    };
+
+    const registroVenta: VentaRegistrada = {
+      ...comprobanteGenerado,
+      idRegistro: `venta-${Date.now()}-${numeroActual}`,
+    };
+
     descontarStockVenta(carrito);
+    setHistorial((prev) => [registroVenta, ...prev]);
+    setContadorTicket((n) => n + 1);
 
     if (tipoComprobante === 'comprobante') {
-      setUltimoComprobante({
-        numero: contadorTicket,
-        fechaHora,
-        cajero: 'Abel',
-        tipoComprobante,
-        datosCliente,
-        items: carrito,
-        total,
-        medioPago,
-      });
-      setContadorTicket((n) => n + 1);
+      setUltimoComprobante(comprobanteGenerado);
       setFeedback({
-        texto: `Comprobante #${contadorTicket} listo para imprimir en A4.`,
+        texto: `Comprobante #${numeroActual} emitido y guardado en el historial.`,
         tipo: 'ok',
       });
     } else {
       setUltimoComprobante(null);
       setUltimosItemsFactura(carrito);
       setFeedback({
-        texto: `Factura C emitida en ARCA (${datosCliente?.razonSocial || 'Consumidor Final'}).`,
+        texto: `Factura C #${numeroActual} emitida y guardada en el historial (${
+          datosCliente?.razonSocial || 'Consumidor Final'
+        }).`,
         tipo: 'ok',
       });
     }
 
     setCarrito([]);
+  };
+
+  const handleLimpiarHistorial = () => {
+    const vacio = limpiarHistorialLocal();
+    setHistorial(vacio);
+    setFeedback({
+      texto: 'Historial de ventas limpiado.',
+      tipo: 'ok',
+    });
   };
 
   return (
@@ -192,9 +227,9 @@ export default function App() {
       <main className="relative mx-auto flex max-w-7xl flex-col gap-4 px-4 py-6 sm:px-6 print:hidden">
         <TopBarPos cajero="Abel" cajaAbierta={true} lectoraActiva={true} />
 
-        {/* Navegación entre Caja / POS y Catálogo y Stock */}
+        {/* Navegación principal */}
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-white/10 bg-slate-900/60 px-3 py-2">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={() => setVistaActiva('pos')}
@@ -216,6 +251,17 @@ export default function App() {
               }`}
             >
               Catálogo y Stock ({catalogo.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setVistaActiva('historial')}
+              className={`cursor-pointer rounded-lg px-3.5 py-1.5 text-xs font-semibold transition ${
+                vistaActiva === 'historial'
+                  ? 'bg-cyan-500 text-slate-950'
+                  : 'border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              Historial de Ventas ({historial.length})
             </button>
           </div>
         </div>
@@ -246,6 +292,13 @@ export default function App() {
             onActualizarItem={actualizarItemCatalogo}
             onEliminarItem={eliminarItemCatalogo}
             onRestablecerCatalogo={handleRestablecerCatalogo}
+            onVolverPos={() => setVistaActiva('pos')}
+          />
+        ) : vistaActiva === 'historial' ? (
+          <HistorialVentasView
+            ventas={historial}
+            onReimprimirVenta={(venta) => setUltimoComprobante(venta)}
+            onLimpiarHistorial={handleLimpiarHistorial}
             onVolverPos={() => setVistaActiva('pos')}
           />
         ) : (
