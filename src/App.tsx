@@ -35,8 +35,13 @@ import {
   type VentaRegistrada,
 } from './services/historialService';
 import {
+  actualizarFondoInicialBackend,
+  agregarMovimientoCajaBackend,
   cargarEstadoArqueo,
+  eliminarMovimientoCajaBackend,
   guardarEstadoArqueo,
+  obtenerArqueoBackend,
+  registrarCierreCajaBackend,
   type CierreCajaRegistrado,
   type MovimientoCaja,
 } from './services/arqueoService';
@@ -67,9 +72,8 @@ type VistaActiva =
 function mapearTipoComprobanteBackend(
   tipo: TipoComprobante
 ): TipoComprobanteVenta {
-  return tipo === 'factura' ? 'factura_arca' : 'comprobante';
+  return tipo === 'factura_arca' ? 'factura_arca' : 'comprobante';
 }
-
 export default function App() {
   const [usuarios, setUsuarios] = useState<UsuarioPos[]>(() =>
     cargarUsuariosLocales()
@@ -132,6 +136,12 @@ export default function App() {
           setContadorTicket(maxNumero + 1);
         }
       }
+    });
+
+    obtenerArqueoBackend().then((estadoBackend) => {
+      setFondoInicial(estadoBackend.fondoInicial);
+      setMovimientosCaja(estadoBackend.movimientos);
+      setCierresCaja(estadoBackend.cierres);
     });
   }, [sesion]);
 
@@ -443,7 +453,26 @@ export default function App() {
     });
   };
 
-  const handleAgregarMovimientoCaja = (
+  const handleCambiarFondoInicial = async (monto: number) => {
+    if (!esAdmin) return;
+    const montoLimpio = Math.max(0, Number(monto) || 0);
+    setFondoInicial(montoLimpio);
+    const res = await actualizarFondoInicialBackend(montoLimpio);
+    if (!res.ok) {
+      setFeedback({
+        texto: `Fondo inicial actualizado localmente (${res.error})`,
+        tipo: 'error',
+      });
+      return;
+    }
+    setFondoInicial(res.fondoInicial);
+    setFeedback({
+      texto: 'Fondo inicial de caja actualizado en el servidor.',
+      tipo: 'ok',
+    });
+  };
+
+  const handleAgregarMovimientoCaja = async (
     mov: Omit<MovimientoCaja, 'id' | 'fechaHora'>
   ) => {
     if (!esAdmin) return;
@@ -451,24 +480,42 @@ export default function App() {
       dateStyle: 'short',
       timeStyle: 'short',
     });
-    const nuevoMov: MovimientoCaja = {
+    const localMov: MovimientoCaja = {
       ...mov,
       id: `mov-${Date.now()}`,
       fechaHora,
     };
-    setMovimientosCaja((prev) => [nuevoMov, ...prev]);
+
+    const res = await agregarMovimientoCajaBackend(mov);
+    const movFinal = res.ok ? res.movimiento : localMov;
+
+    setMovimientosCaja((prev) => [movFinal, ...prev]);
     setFeedback({
-      texto: `${mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} "${mov.concepto}" registrado.`,
+      texto: res.ok
+        ? `${mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} "${mov.concepto}" guardado en el servidor.`
+        : `${mov.tipo === 'ingreso' ? 'Ingreso' : 'Egreso'} "${mov.concepto}" guardado localmente (${res.error})`,
+      tipo: res.ok ? 'ok' : 'error',
+    });
+  };
+
+  const handleEliminarMovimientoCaja = async (id: string) => {
+    if (!esAdmin) return;
+    setMovimientosCaja((prev) => prev.filter((m) => m.id !== id));
+    const res = await eliminarMovimientoCajaBackend(id);
+    if (!res.ok) {
+      setFeedback({
+        texto: `Movimiento quitado localmente (${res.error})`,
+        tipo: 'error',
+      });
+      return;
+    }
+    setFeedback({
+      texto: 'Movimiento de caja eliminado en el servidor.',
       tipo: 'ok',
     });
   };
 
-  const handleEliminarMovimientoCaja = (id: string) => {
-    if (!esAdmin) return;
-    setMovimientosCaja((prev) => prev.filter((m) => m.id !== id));
-  };
-
-  const handleRegistrarCierreCaja = (
+  const handleRegistrarCierreCaja = async (
     cierre: Omit<CierreCajaRegistrado, 'id' | 'fechaHora'>
   ) => {
     if (!esAdmin) return;
@@ -476,15 +523,21 @@ export default function App() {
       dateStyle: 'short',
       timeStyle: 'short',
     });
-    const nuevoCierre: CierreCajaRegistrado = {
+    const localCierre: CierreCajaRegistrado = {
       ...cierre,
       id: `cierre-${Date.now()}`,
       fechaHora,
     };
-    setCierresCaja((prev) => [nuevoCierre, ...prev]);
+
+    const res = await registrarCierreCajaBackend(cierre);
+    const cierreFinal = res.ok ? res.cierre : localCierre;
+
+    setCierresCaja((prev) => [cierreFinal, ...prev]);
     setFeedback({
-      texto: 'Cierre de caja guardado en el historial de cierres.',
-      tipo: 'ok',
+      texto: res.ok
+        ? 'Cierre de caja guardado en el servidor.'
+        : `Cierre de caja guardado localmente (${res.error})`,
+      tipo: res.ok ? 'ok' : 'error',
     });
   };
 
@@ -617,14 +670,14 @@ export default function App() {
           <HistorialVentasView
             ventas={historial}
             onReimprimirVenta={(venta) =>
-              setUltimoComprobante({
-                ...venta,
-                tipoComprobante:
-                  venta.tipoComprobante === 'factura_arca'
-                    ? 'factura'
-                    : 'comprobante',
-              })
-            }
+  setUltimoComprobante({
+    ...venta,
+    tipoComprobante:
+      venta.tipoComprobante === 'factura_arca'
+        ? 'factura_arca'
+        : 'comprobante',
+  })
+}
             onLimpiarHistorial={handleLimpiarHistorial}
             onVolverPos={() => setVistaActiva('pos')}
           />
@@ -635,14 +688,7 @@ export default function App() {
             fondoInicial={fondoInicial}
             movimientos={movimientosCaja}
             cierres={cierresCaja}
-            onCambiarFondoInicial={(monto) => {
-              if (!esAdmin) return;
-              setFondoInicial(monto);
-              setFeedback({
-                texto: 'Fondo inicial de caja actualizado.',
-                tipo: 'ok',
-              });
-            }}
+            onCambiarFondoInicial={handleCambiarFondoInicial}
             onAgregarMovimiento={handleAgregarMovimientoCaja}
             onEliminarMovimiento={handleEliminarMovimientoCaja}
             onRegistrarCierre={handleRegistrarCierreCaja}

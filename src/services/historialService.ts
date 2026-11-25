@@ -31,12 +31,8 @@ interface HistorialApiResponse {
 }
 
 function normalizarTipoComprobante(tipo?: string): TipoComprobanteVenta {
-  if (tipo === 'factura_arca' || tipo === 'factura') {
-    return 'factura_arca';
-  }
-  return 'comprobante';
+  return tipo === 'factura_arca' ? 'factura_arca' : 'comprobante';
 }
-
 function normalizarVenta(raw: VentaApi): VentaRegistrada {
   const idFinal = String(
     raw.idRegistro ?? raw.id ?? raw._id ?? `venta-${Date.now()}`
