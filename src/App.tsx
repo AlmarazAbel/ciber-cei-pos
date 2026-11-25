@@ -83,7 +83,9 @@ export default function App() {
   );
 
   const [carrito, setCarrito] = useState<ItemCarrito[]>([]);
-  const [ultimosItemsFactura, setUltimosItemsFactura] = useState<ItemCarrito[]>([]);
+  const [ultimosItemsFactura, setUltimosItemsFactura] = useState<ItemCarrito[]>(
+    []
+  );
   const [medioPago, setMedioPago] = useState<MedioPago>('Efectivo');
   const [feedback, setFeedback] = useState<{
     texto: string;
@@ -124,6 +126,11 @@ export default function App() {
   const serviciosRapidos = useMemo(
     () => catalogo.filter((item) => item.tipo === 'servicio'),
     [catalogo]
+  );
+
+  const total = useMemo(
+    () => carrito.reduce((acc, item) => acc + item.precio * item.cantidad, 0),
+    [carrito]
   );
 
   if (!sesion) {
@@ -301,11 +308,6 @@ export default function App() {
   const quitarItem = (id: string) => {
     setCarrito((prev) => prev.filter((item) => item.id !== id));
   };
-
-  const total = useMemo(
-    () => carrito.reduce((acc, item) => acc + item.precio * item.cantidad, 0),
-    [carrito]
-  );
 
   const emitirDocumento = (
     tipoComprobante: TipoComprobante,

@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+  autenticarConBackend,
   autenticarLocal,
   type SesionPos,
   type UsuarioPos,
@@ -21,15 +22,21 @@ export function LoginView({ usuarios, onLoginSuccess }: LoginViewProps) {
   );
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [cargando, setCargando] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const resultado = autenticarLocal(identificador, password, usuarios);
+    setError(null);
+    setCargando(true);
+
+    const resultado = await autenticarConBackend(identificador, password);
+    setCargando(false);
+
     if (!resultado.ok) {
       setError(resultado.error);
       return;
     }
-    setError(null);
+
     onLoginSuccess(resultado.sesion);
   };
 
@@ -77,7 +84,8 @@ export function LoginView({ usuarios, onLoginSuccess }: LoginViewProps) {
               value={identificador}
               onChange={(e) => setIdentificador(e.target.value)}
               placeholder="Ej: abel"
-              className="w-full rounded-xl border border-white/15 bg-slate-950/80 px-3.5 py-2.5 text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+              disabled={cargando}
+              className="w-full rounded-xl border border-white/15 bg-slate-950/80 px-3.5 py-2.5 text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none disabled:opacity-60"
             />
           </div>
 
@@ -94,7 +102,8 @@ export function LoginView({ usuarios, onLoginSuccess }: LoginViewProps) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded-xl border border-white/15 bg-slate-950/80 px-3.5 py-2.5 text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none"
+              disabled={cargando}
+              className="w-full rounded-xl border border-white/15 bg-slate-950/80 px-3.5 py-2.5 text-white placeholder-slate-500 focus:border-cyan-400 focus:outline-none disabled:opacity-60"
             />
           </div>
 
@@ -106,9 +115,10 @@ export function LoginView({ usuarios, onLoginSuccess }: LoginViewProps) {
 
           <button
             type="submit"
-            className="mt-1 w-full cursor-pointer rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg transition hover:brightness-110"
+            disabled={cargando}
+            className="mt-1 w-full cursor-pointer rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Entrar al POS
+            {cargando ? 'Conectando...' : 'Entrar al POS'}
           </button>
         </form>
 
@@ -123,8 +133,9 @@ export function LoginView({ usuarios, onLoginSuccess }: LoginViewProps) {
                 <button
                   key={u.id}
                   type="button"
+                  disabled={cargando}
                   onClick={() => handleAccesoRapido(u.usuario)}
-                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200"
+                  className="cursor-pointer rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-semibold text-slate-200 transition hover:border-cyan-400/40 hover:bg-cyan-500/10 hover:text-cyan-200 disabled:opacity-60"
                 >
                   {u.nombre} ({u.rol})
                 </button>
