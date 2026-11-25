@@ -27,7 +27,11 @@ import {
 import {
   cargarHistorialInicial,
   guardarHistorialLocal,
+  limpiarHistorialBackend,
   limpiarHistorialLocal,
+  obtenerHistorialBackend,
+  registrarVentaBackend,
+  type TipoComprobanteVenta,
   type VentaRegistrada,
 } from './services/historialService';
 import {
@@ -59,6 +63,12 @@ type VistaActiva =
   | 'arqueo'
   | 'grafico'
   | 'usuarios';
+
+function mapearTipoComprobanteBackend(
+  tipo: TipoComprobante
+): TipoComprobanteVenta {
+  return tipo === 'factura' ? 'factura_arca' : 'comprobante';
+}
 
 export default function App() {
   const [usuarios, setUsuarios] = useState<UsuarioPos[]>(() =>
@@ -106,6 +116,21 @@ export default function App() {
     obtenerCatalogoBackend().then((itemsBackend) => {
       if (itemsBackend.length > 0) {
         setCatalogo(itemsBackend);
+      }
+    });
+  }, [sesion]);
+
+  useEffect(() => {
+    if (!sesion || sesion.usuario.rol !== 'Admin') return;
+    obtenerHistorialBackend().then((ventasBackend) => {
+      setHistorial(ventasBackend);
+      if (ventasBackend.length > 0) {
+        const maxNumero = Math.max(
+          ...ventasBackend.map((v) => Number(v.numero) || 0)
+        );
+        if (maxNumero >= 1042) {
+          setContadorTicket(maxNumero + 1);
+        }
       }
     });
   }, [sesion]);
@@ -293,7 +318,7 @@ export default function App() {
     });
   };
 
-  const descontarStockVenta = (itemsVendidos: ItemCarrito[]) => {
+  const descontarStockLocal = (itemsVendidos: ItemCarrito[]) => {
     setCatalogo((prev) =>
       prev.map((item) => {
         if (item.tipo !== 'articulo' || typeof item.stock !== 'number') {
@@ -335,7 +360,7 @@ export default function App() {
     setCarrito((prev) => prev.filter((item) => item.id !== id));
   };
 
-  const emitirDocumento = (
+  const emitirDocumento = async (
     tipoComprobante: TipoComprobante,
     datosCliente?: DatosClienteFactura
   ) => {
@@ -347,54 +372,74 @@ export default function App() {
     });
 
     const numeroActual = contadorTicket;
+    const itemsVenta = [...carrito];
+    const totalVenta = total;
+    const medioPagoVenta = medioPago;
 
-    const comprobanteGenerado: ComprobanteEmitido = {
+    const payloadVenta: VentaRegistrada = {
+      idRegistro: `venta-${Date.now()}-${numeroActual}`,
       numero: numeroActual,
       fechaHora,
       cajero: nombreCajero,
-      tipoComprobante,
+      tipoComprobante: mapearTipoComprobanteBackend(tipoComprobante),
       datosCliente,
-      items: carrito,
-      total,
-      medioPago,
+      items: itemsVenta,
+      total: totalVenta,
+      medioPago: medioPagoVenta,
     };
 
-    const registroVenta: VentaRegistrada = {
-      ...comprobanteGenerado,
-      idRegistro: `venta-${Date.now()}-${numeroActual}`,
+    const resBackend = await registrarVentaBackend(payloadVenta);
+    const ventaFinal = resBackend.ok ? resBackend.venta : payloadVenta;
+
+    const comprobanteModal: ComprobanteEmitido = {
+      numero: ventaFinal.numero || numeroActual,
+      fechaHora: ventaFinal.fechaHora || fechaHora,
+      cajero: ventaFinal.cajero || nombreCajero,
+      tipoComprobante,
+      datosCliente: ventaFinal.datosCliente ?? datosCliente,
+      items: ventaFinal.items.length > 0 ? ventaFinal.items : itemsVenta,
+      total: ventaFinal.total || totalVenta,
+      medioPago: ventaFinal.medioPago || medioPagoVenta,
     };
 
-    descontarStockVenta(carrito);
-    setHistorial((prev) => [registroVenta, ...prev]);
-    setContadorTicket((n) => n + 1);
+    descontarStockLocal(itemsVenta);
+    setHistorial((prev) => [ventaFinal, ...prev]);
+    setContadorTicket((ventaFinal.numero || numeroActual) + 1);
 
     if (tipoComprobante === 'comprobante') {
-      setUltimoComprobante(comprobanteGenerado);
+      setUltimoComprobante(comprobanteModal);
       setFeedback({
-        texto: `Comprobante #${numeroActual} emitido y guardado en el historial.`,
-        tipo: 'ok',
+        texto: resBackend.ok
+          ? `Comprobante #${comprobanteModal.numero} emitido y guardado en el servidor.`
+          : `Comprobante #${comprobanteModal.numero} emitido y guardado localmente (${resBackend.error})`,
+        tipo: resBackend.ok ? 'ok' : 'error',
       });
     } else {
       setUltimoComprobante(null);
-      setUltimosItemsFactura(carrito);
+      setUltimosItemsFactura(itemsVenta);
       setFeedback({
-        texto: `Factura C #${numeroActual} emitida y guardada en el historial (${
-          datosCliente?.razonSocial || 'Consumidor Final'
-        }).`,
-        tipo: 'ok',
+        texto: resBackend.ok
+          ? `Factura C #${comprobanteModal.numero} emitida y guardada en el servidor (${
+              datosCliente?.razonSocial || 'Consumidor Final'
+            }).`
+          : `Factura C #${comprobanteModal.numero} emitida localmente (${resBackend.error})`,
+        tipo: resBackend.ok ? 'ok' : 'error',
       });
     }
 
     setCarrito([]);
   };
 
-  const handleLimpiarHistorial = () => {
+  const handleLimpiarHistorial = async () => {
     if (!esAdmin) return;
+    const res = await limpiarHistorialBackend();
     const vacio = limpiarHistorialLocal();
     setHistorial(vacio);
     setFeedback({
-      texto: 'Historial de ventas limpiado.',
-      tipo: 'ok',
+      texto: res.ok
+        ? 'Historial de ventas limpiado en el servidor y localmente.'
+        : `Historial limpiado localmente (${res.error})`,
+      tipo: res.ok ? 'ok' : 'error',
     });
   };
 
@@ -571,7 +616,15 @@ export default function App() {
         ) : esAdmin && vistaActiva === 'historial' ? (
           <HistorialVentasView
             ventas={historial}
-            onReimprimirVenta={(venta) => setUltimoComprobante(venta)}
+            onReimprimirVenta={(venta) =>
+              setUltimoComprobante({
+                ...venta,
+                tipoComprobante:
+                  venta.tipoComprobante === 'factura_arca'
+                    ? 'factura'
+                    : 'comprobante',
+              })
+            }
             onLimpiarHistorial={handleLimpiarHistorial}
             onVolverPos={() => setVistaActiva('pos')}
           />
