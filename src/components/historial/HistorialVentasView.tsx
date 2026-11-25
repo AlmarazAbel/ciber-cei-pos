@@ -200,7 +200,7 @@ export function HistorialVentasView({
                 return (
                   <tr
                     key={venta.idRegistro}
-                    className="border-b border-white/5 transition hover:bg-white/[0.03] last:border-b-0"
+                    className="border-b border-white/5 transition hover:bg-white/3 last:border-b-0"
                   >
                     <td className="px-3 py-2.5 font-mono font-semibold text-cyan-300">
                       #{String(venta.numero).padStart(8, '0')}

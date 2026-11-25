@@ -16,8 +16,12 @@ import {
   type UsuarioPos,
 } from './services/authService';
 import {
+  actualizarItemCatalogoBackend,
   cargarCatalogoInicial,
+  crearItemCatalogoBackend,
+  eliminarItemCatalogoBackend,
   guardarCatalogoLocal,
+  obtenerCatalogoBackend,
   restablecerCatalogoPorDefecto,
 } from './services/catalogoService';
 import {
@@ -96,6 +100,15 @@ export default function App() {
   const [contadorTicket, setContadorTicket] = useState(1042);
 
   const esAdmin = sesion?.usuario.rol === 'Admin';
+
+  useEffect(() => {
+    if (!sesion) return;
+    obtenerCatalogoBackend().then((itemsBackend) => {
+      if (itemsBackend.length > 0) {
+        setCatalogo(itemsBackend);
+      }
+    });
+  }, [sesion]);
 
   useEffect(() => {
     guardarUsuariosLocales(usuarios);
@@ -208,7 +221,7 @@ export default function App() {
     });
   };
 
-  const crearItemCatalogo = (
+  const crearItemCatalogo = async (
     nuevo: Omit<ItemCatalogo, 'id'> & { id?: string }
   ) => {
     if (!esAdmin) return;
@@ -224,31 +237,44 @@ export default function App() {
       return;
     }
 
-    const itemCreado: ItemCatalogo = {
-      ...nuevo,
-      id: idGenerado,
-    };
+    const res = await crearItemCatalogoBackend({ ...nuevo, id: idGenerado });
+    if (!res.ok) {
+      setFeedback({ texto: res.error, tipo: 'error' });
+      return;
+    }
 
-    setCatalogo((prev) => [itemCreado, ...prev]);
+    setCatalogo((prev) => [res.item, ...prev]);
     setFeedback({
-      texto: `"${itemCreado.nombre}" agregado al catálogo.`,
+      texto: `"${res.item.nombre}" agregado al catálogo.`,
       tipo: 'ok',
     });
   };
 
-  const actualizarItemCatalogo = (actualizado: ItemCatalogo) => {
+  const actualizarItemCatalogo = async (actualizado: ItemCatalogo) => {
     if (!esAdmin) return;
+    const res = await actualizarItemCatalogoBackend(actualizado);
+    if (!res.ok) {
+      setFeedback({ texto: res.error, tipo: 'error' });
+      return;
+    }
+
     setCatalogo((prev) =>
-      prev.map((item) => (item.id === actualizado.id ? actualizado : item))
+      prev.map((item) => (item.id === res.item.id ? res.item : item))
     );
     setFeedback({
-      texto: `"${actualizado.nombre}" actualizado.`,
+      texto: `"${res.item.nombre}" actualizado.`,
       tipo: 'ok',
     });
   };
 
-  const eliminarItemCatalogo = (id: string) => {
+  const eliminarItemCatalogo = async (id: string) => {
     if (!esAdmin) return;
+    const res = await eliminarItemCatalogoBackend(id);
+    if (!res.ok) {
+      setFeedback({ texto: res.error, tipo: 'error' });
+      return;
+    }
+
     setCatalogo((prev) => prev.filter((item) => item.id !== id));
     setCarrito((prev) => prev.filter((item) => item.id !== id));
     setFeedback({

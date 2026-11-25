@@ -116,7 +116,7 @@ export function LoginView({ usuarios, onLoginSuccess }: LoginViewProps) {
           <button
             type="submit"
             disabled={cargando}
-            className="mt-1 w-full cursor-pointer rounded-xl bg-gradient-to-r from-cyan-500 to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-1 w-full cursor-pointer rounded-xl bg-linear-to-r from-cyan-500 to-indigo-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {cargando ? 'Conectando...' : 'Entrar al POS'}
           </button>

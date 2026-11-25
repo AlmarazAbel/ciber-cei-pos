@@ -398,7 +398,7 @@ export function CatalogoStockView({
                 return (
                   <tr
                     key={item.id}
-                    className="border-b border-white/5 transition hover:bg-white/[0.03] last:border-b-0"
+                    className="border-b border-white/5 transition hover:bg-white/3 last:border-b-0"
                   >
                     <td className="px-3 py-2">
                       {item.imagen ? (
