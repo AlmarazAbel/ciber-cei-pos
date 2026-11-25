@@ -1,75 +1,26 @@
-# React + TypeScript + Vite
+# Ciber CEI POS — Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Interfaz web de **Punto de Venta (POS)** para gestión de caja, catálogo y stock, historial de ventas, arqueo de caja, administración de usuarios y reportes gráficos de ventas y utilidad diaria, conectada al backend (`ciber-cei-backend`) con persistencia en MongoDB.
 
-Currently, two official plugins are available:
+## Módulos y funcionalidades
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+* **Caja / POS:** venta rápida de artículos y servicios, búsqueda y escaneo de código de barras, selección de medio de pago (*Efectivo*, *Transferencia*, *Tarjeta*) y emisión de comprobantes / facturación ARCA.
+* **Catálogo y Stock:** alta, edición, eliminación y edición rápida de precios y stock, incluyendo precio de compra (`precioCompra`), cálculo de margen y vista ampliada de imágenes.
+* **Historial de Ventas:** consulta de ventas realizadas con sincronización con el backend.
+* **Arqueo de Caja:** control y cierre de caja por jornada.
+* **Gestión de Usuarios:** acceso mediante inicio de sesión y administración de cuentas de usuario.
+* **Gráfico de Ventas y Utilidad del Día:** comparativa diaria de ventas (mes actual vs. mes anterior) y gráfico de torta de utilidad diaria calculado restando el costo real (`(precio - precioCompra) * cantidad`).
 
-## React Compiler
+## Stack tecnológico
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+* **React** + **TypeScript**
+* **Vite**
+* **Tailwind CSS**
+* **pnpm**
 
-## Expanding the ESLint configuration
+## Configuración del entorno
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Creá un archivo `.env` en la raíz del proyecto con la URL base de la API del backend:
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
-
-You can also install [eslint-plugin-react-x](https://npmx.dev/package/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://npmx.dev/package/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+```env
+VITE_API_URL=http://localhost:4000/api
