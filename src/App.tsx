@@ -16,6 +16,12 @@ import {
   type UsuarioPos,
 } from './services/authService';
 import {
+  actualizarUsuarioBackend,
+  crearUsuarioBackend,
+  eliminarUsuarioBackend,
+  obtenerUsuariosBackend,
+} from './services/usuariosService';
+import {
   actualizarItemCatalogoBackend,
   cargarCatalogoInicial,
   crearItemCatalogoBackend,
@@ -74,6 +80,7 @@ function mapearTipoComprobanteBackend(
 ): TipoComprobanteVenta {
   return tipo === 'factura_arca' ? 'factura_arca' : 'comprobante';
 }
+
 export default function App() {
   const [usuarios, setUsuarios] = useState<UsuarioPos[]>(() =>
     cargarUsuariosLocales()
@@ -143,6 +150,12 @@ export default function App() {
       setMovimientosCaja(estadoBackend.movimientos);
       setCierresCaja(estadoBackend.cierres);
     });
+
+    obtenerUsuariosBackend().then((usuariosBackend) => {
+      if (usuariosBackend.length > 0) {
+        setUsuarios(usuariosBackend);
+      }
+    });
   }, [sesion]);
 
   useEffect(() => {
@@ -203,55 +216,133 @@ export default function App() {
     setFeedback(null);
   };
 
-  const handleCrearUsuario = (nuevo: {
+  const resolverUsuarioReal = async (id: string) => {
+    let actual = usuarios.find((u) => u.id === id);
+    let idObjetivo = actual?.id || id;
+
+    if (idObjetivo.startsWith('usr-')) {
+      const refrescados = await obtenerUsuariosBackend();
+      if (refrescados.length > 0) {
+        setUsuarios(refrescados);
+        const encontradoReal = refrescados.find(
+          (u) => u.id === id || (actual && u.usuario === actual.usuario)
+        );
+        if (encontradoReal) {
+          actual = encontradoReal;
+          idObjetivo = encontradoReal.id;
+        }
+      }
+    }
+
+    return { actual, idObjetivo };
+  };
+
+  const handleCrearUsuario = async (nuevo: {
     nombre: string;
     usuario: string;
     password?: string;
     rol: RolUsuarioPos;
   }) => {
     if (!esAdmin) return;
-    const creado: UsuarioPos = {
-      id: `usr-${Date.now().toString().slice(-6)}`,
-      nombre: nuevo.nombre,
-      usuario: nuevo.usuario,
-      password: nuevo.password,
-      rol: nuevo.rol,
-      activo: true,
-    };
-    setUsuarios((prev) => [...prev, creado]);
+    const res = await crearUsuarioBackend(nuevo);
+    if (!res.ok) {
+      setFeedback({ texto: res.error, tipo: 'error' });
+      return;
+    }
+
+    const listaActualizada = await obtenerUsuariosBackend();
+    if (listaActualizada.length > 0) {
+      setUsuarios(listaActualizada);
+    } else {
+      setUsuarios((prev) => [...prev, res.usuario]);
+    }
+
     setFeedback({
-      texto: `Usuario "${creado.nombre}" (@${creado.usuario}) creado con rol ${creado.rol}.`,
+      texto: `Usuario "${res.usuario.nombre}" (@${res.usuario.usuario}) creado y guardado en el servidor.`,
       tipo: 'ok',
     });
   };
 
-  const handleCambiarRolUsuario = (id: string, nuevoRol: RolUsuarioPos) => {
+  const handleCambiarRolUsuario = async (id: string, nuevoRol: RolUsuarioPos) => {
     if (!esAdmin || id === sesion.usuario.id) return;
+    const { actual, idObjetivo } = await resolverUsuarioReal(id);
+    if (!actual) return;
+
+    const res = await actualizarUsuarioBackend(idObjetivo, { rol: nuevoRol });
+    if (!res.ok) {
+      setFeedback({ texto: res.error, tipo: 'error' });
+      return;
+    }
+
+    const rolActualizado = res.usuario.rol ?? nuevoRol;
     setUsuarios((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, rol: nuevoRol } : u))
+      prev.map((u) =>
+        u.id === id || u.id === idObjetivo || u.usuario === actual.usuario
+          ? { ...u, id: res.usuario.id || idObjetivo, rol: rolActualizado }
+          : u
+      )
     );
     setFeedback({
-      texto: 'Rol de usuario actualizado.',
+      texto: `Rol de "${actual.nombre}" actualizado a ${rolActualizado}.`,
       tipo: 'ok',
     });
   };
 
-  const handleToggleActivoUsuario = (id: string) => {
+  const handleToggleActivoUsuario = async (id: string) => {
     if (!esAdmin || id === sesion.usuario.id) return;
+    const { actual, idObjetivo } = await resolverUsuarioReal(id);
+    if (!actual) return;
+
+    const siguienteEstado = !actual.activo;
+
+    const res = await actualizarUsuarioBackend(idObjetivo, {
+      activo: siguienteEstado,
+    });
+    if (!res.ok) {
+      setFeedback({ texto: res.error, tipo: 'error' });
+      return;
+    }
+
+    const estadoFinal =
+      typeof res.usuario.activo === 'boolean'
+        ? res.usuario.activo
+        : siguienteEstado;
+
     setUsuarios((prev) =>
-      prev.map((u) => (u.id === id ? { ...u, activo: !u.activo } : u))
+      prev.map((u) =>
+        u.id === id || u.id === idObjetivo || u.usuario === actual.usuario
+          ? { ...u, id: res.usuario.id || idObjetivo, activo: estadoFinal }
+          : u
+      )
     );
     setFeedback({
-      texto: 'Estado de usuario actualizado.',
+      texto: `Usuario "${actual.nombre}" ${
+        estadoFinal ? 'activado' : 'desactivado'
+      }.`,
       tipo: 'ok',
     });
   };
 
-  const handleEliminarUsuario = (id: string) => {
+  const handleEliminarUsuario = async (id: string) => {
     if (!esAdmin || id === sesion.usuario.id) return;
-    setUsuarios((prev) => prev.filter((u) => u.id !== id));
+    const { actual, idObjetivo } = await resolverUsuarioReal(id);
+
+    const res = await eliminarUsuarioBackend(idObjetivo);
+    if (!res.ok) {
+      setFeedback({ texto: res.error, tipo: 'error' });
+      return;
+    }
+
+    setUsuarios((prev) =>
+      prev.filter(
+        (u) =>
+          u.id !== id &&
+          u.id !== idObjetivo &&
+          (!actual || u.usuario !== actual.usuario)
+      )
+    );
     setFeedback({
-      texto: 'Usuario eliminado.',
+      texto: 'Usuario eliminado del servidor.',
       tipo: 'ok',
     });
   };
@@ -670,14 +761,14 @@ export default function App() {
           <HistorialVentasView
             ventas={historial}
             onReimprimirVenta={(venta) =>
-  setUltimoComprobante({
-    ...venta,
-    tipoComprobante:
-      venta.tipoComprobante === 'factura_arca'
-        ? 'factura_arca'
-        : 'comprobante',
-  })
-}
+              setUltimoComprobante({
+                ...venta,
+                tipoComprobante:
+                  venta.tipoComprobante === 'factura_arca'
+                    ? 'factura_arca'
+                    : 'comprobante',
+              })
+            }
             onLimpiarHistorial={handleLimpiarHistorial}
             onVolverPos={() => setVistaActiva('pos')}
           />
